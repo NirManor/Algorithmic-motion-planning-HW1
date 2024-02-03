@@ -5,7 +5,6 @@ from typing import List, Tuple
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
 
-
 # TODO
 def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
     """
@@ -14,7 +13,24 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
     :param r: The radius of the rhombus
     :return: The polygon composed from the Minkowsky sums
     """
-    pass
+    
+    #method 1 - convex hull (what is the time compexity of it)
+    originalCoords = list(original_shape.exterior.coords)
+    newCoords = []
+    for coord in originalCoords:
+        newCoords.append(coord)
+        newCoords.append((coord[0] - r, coord[1]))
+        newCoords.append((coord[0] + r, coord[1]))
+        newCoords.append((coord[0], coord[1] - r))
+        newCoords.append((coord[0], coord[1] + r))
+    pointsForConvexHull = Polygon(newCoords)
+    convexHull = pointsForConvexHull.convex_hull
+
+    #method 2 - minkowski sum algorithm
+    # TODO?
+    
+
+    return convexHull
 
 
 # TODO
