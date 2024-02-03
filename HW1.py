@@ -1,9 +1,34 @@
 import argparse
 import os
 from typing import List, Tuple
+import math
 
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
+
+def angle_between_lines(line1_points, line2_points):
+    line1 = LineString(line1_points)
+    line2 = LineString(line2_points)
+
+    vector1 = (line1.xy[0][1] - line1.xy[0][0], line1.xy[1][1] - line1.xy[1][0])
+    vector2 = (line2.xy[0][1] - line2.xy[0][0], line2.xy[1][1] - line2.xy[1][0])
+
+    # Calculate the signed angle using atan2
+    angle_rad = math.atan2(vector2[0], vector2[1]) - math.atan2(vector1[0], vector1[1])
+
+    # Convert the angle to degrees
+    angle_deg = math.degrees(angle_rad)
+
+    # Ensure the angle is in the range [0, 360)
+    angle_deg = (angle_deg + 360) % 360
+
+    return angle_deg
+
+def summing_polygon_vertices(v_1,v_2):
+    v_x=v_1[0]+v_2[0]
+    v_y=v_1[1]+v_2[1]
+    return (v_x,v_y)
+
 
 # TODO
 def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
@@ -13,24 +38,45 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
     :param r: The radius of the rhombus
     :return: The polygon composed from the Minkowsky sums
     """
-    
+    RobotCoords=[(0.0,-r),(r,0.0),(0.0,r),(-r,0.0),(0.0,-r)]
+
     #method 1 - convex hull (what is the time compexity of it)
     originalCoords = list(original_shape.exterior.coords)
+    # Adding V_n+2 <- V_2 and W_n+2 <- W_2 to the polygon vertices List
+    RobotCoords.append(RobotCoords[1])
+    originalCoords.append(originalCoords[1])
     newCoords = []
-    for coord in originalCoords:
-        newCoords.append(coord)
-        newCoords.append((coord[0] - r, coord[1]))
-        newCoords.append((coord[0] + r, coord[1]))
-        newCoords.append((coord[0], coord[1] - r))
-        newCoords.append((coord[0], coord[1] + r))
-    pointsForConvexHull = Polygon(newCoords)
-    convexHull = pointsForConvexHull.convex_hull
+    # method 1 - minkowski sum
+    # for coord in originalCoords:
+    #     newCoords.append(coord)
+    #     newCoords.append((coord[0] - r, coord[1]))
+    #     newCoords.append((coord[0] + r, coord[1]))
+    #     newCoords.append((coord[0], coord[1] - r))
+    #     newCoords.append((coord[0], coord[1] + r))
+    # pointsForConvexHull = Polygon(newCoords)
+    # convexHull = pointsForConvexHull.convex_hull
 
     #method 2 - minkowski sum algorithm
     # TODO?
-    
+    i=0
+    j=0
+    NewCoords=[]
+    test=len(RobotCoords)-1
+    while (i<len(RobotCoords)-1) and (j<len(originalCoords)-1):
 
-    return convexHull
+        NewCoords.append(summing_polygon_vertices(RobotCoords[i],originalCoords[j]))
+        angle_robot = angle_between_lines([RobotCoords[i],RobotCoords[i+1]], [(0, 0), (1, 0)])
+        angle_obs = angle_between_lines([originalCoords[j],originalCoords[j+1]], [(0, 0), (1, 0)])
+        if angle_robot<angle_obs:
+            i+=1
+        elif angle_robot>angle_obs:
+            j+=1
+        else:
+            i+= 1
+            j+= 1
+    poly = Polygon(NewCoords)
+
+    return poly
 
 
 # TODO
@@ -79,6 +125,10 @@ if __name__ == '__main__':
             workspace_obstacles.append(Polygon(points))
     with open(robot, 'r') as f:
         source, dist = get_points_and_dist(f.readline())
+
+    # line1_points = [(0, 0), (1, 0)]
+    # line2_points = [(0, 0.5), (-0.5, 0)]
+    # test=angle_between_lines(line1_points, line2_points)
 
     # step 1:
     c_space_obstacles = [get_minkowsky_sum(p, dist) for p in workspace_obstacles]
