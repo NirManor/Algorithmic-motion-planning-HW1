@@ -2,6 +2,8 @@ import argparse
 import os
 from typing import List, Tuple
 import math
+import numpy as np
+import shapely as sh
 
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
@@ -24,11 +26,10 @@ def angle_between_lines(line1_points, line2_points):
 
     return angle_deg
 
-def summing_polygon_vertices(v_1,v_2):
-    v_x=v_1[0]+v_2[0]
-    v_y=v_1[1]+v_2[1]
-    return (v_x,v_y)
-
+def summing_polygon_vertices(v_1, v_2):
+    v_x = v_1[0] + v_2[0]
+    v_y = v_1[1] + v_2[1]
+    return (v_x, v_y)
 
 # TODO
 def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
@@ -38,46 +39,46 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
     :param r: The radius of the rhombus
     :return: The polygon composed from the Minkowsky sums
     """
-    RobotCoords=[(0.0,-r),(r,0.0),(0.0,r),(-r,0.0),(0.0,-r)]
 
     #method 1 - convex hull (what is the time compexity of it)
+    """newCoords = []
     originalCoords = list(original_shape.exterior.coords)
+    for coord in originalCoords:
+         newCoords.append(coord)
+         newCoords.append((coord[0] - r, coord[1]))
+         newCoords.append((coord[0] + r, coord[1]))
+         newCoords.append((coord[0], coord[1] - r))
+         newCoords.append((coord[0], coord[1] + r))
+    pointsForConvexHull = Polygon(newCoords)
+    convexHull = pointsForConvexHull.convex_hull
+
+    return convexHull"""
+    
+
+    #method 2 - minkowsky sum algorithm
+    originalCoords = list(original_shape.exterior.coords)
+    RobotCoords = [(0.0,-r), (r,0.0), (0.0,r), (-r,0.0), (0.0,-r)]
     # Adding V_n+2 <- V_2 and W_n+2 <- W_2 to the polygon vertices List
     RobotCoords.append(RobotCoords[1])
     originalCoords.append(originalCoords[1])
+    
+    i = 0
+    j = 0
     newCoords = []
-    # method 1 - minkowski sum
-    # for coord in originalCoords:
-    #     newCoords.append(coord)
-    #     newCoords.append((coord[0] - r, coord[1]))
-    #     newCoords.append((coord[0] + r, coord[1]))
-    #     newCoords.append((coord[0], coord[1] - r))
-    #     newCoords.append((coord[0], coord[1] + r))
-    # pointsForConvexHull = Polygon(newCoords)
-    # convexHull = pointsForConvexHull.convex_hull
-
-    #method 2 - minkowski sum algorithm
-    # TODO?
-    i=0
-    j=0
-    NewCoords=[]
-    test=len(RobotCoords)-1
-    while (i<len(RobotCoords)-1) and (j<len(originalCoords)-1):
-
-        NewCoords.append(summing_polygon_vertices(RobotCoords[i],originalCoords[j]))
-        angle_robot = angle_between_lines([RobotCoords[i],RobotCoords[i+1]], [(0, 0), (1, 0)])
-        angle_obs = angle_between_lines([originalCoords[j],originalCoords[j+1]], [(0, 0), (1, 0)])
-        if angle_robot<angle_obs:
-            i+=1
-        elif angle_robot>angle_obs:
-            j+=1
+    while (i < len(RobotCoords) - 1) and (j < len(originalCoords) - 1):
+        newCoords.append(summing_polygon_vertices(RobotCoords[i], originalCoords[j]))
+        angle_robot = angle_between_lines([RobotCoords[i], RobotCoords[i + 1]], [(0, 0), (1, 0)])
+        angle_obs = angle_between_lines([originalCoords[j], originalCoords[j + 1]], [(0, 0), (1, 0)])
+        if angle_robot < angle_obs:
+            i += 1
+        elif angle_robot > angle_obs:
+            j += 1
         else:
-            i+= 1
-            j+= 1
-    poly = Polygon(NewCoords)
+            i += 1
+            j += 1
+    poly = Polygon(newCoords)
 
     return poly
-
 
 # TODO
 def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> List[LineString]:
@@ -88,7 +89,48 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
     :param dest: The destination of the query. None for part 1.
     :return: A list of LineStrings holding the edges of the visibility graph
     """
-    pass
+    
+    #should be in total (n^2)logn
+    #obstacles are already calculated with the robot to get the minkowsky sums 
+    ###TODO need to check for a case in which  2 obstacles intersect in their minkowsky and maybe need to compute the union of all minkowsky sums
+    copyObstacles = obstacles.copy()
+    visibilityEdges = []
+    for obstacle in obstacles:
+        currObsPoints = []
+        xx, yy = obstacle.exterior.coords.xy
+        xx.tolist()
+        yy.tolist()
+        currObsPoints = list(tuple(zip(xx, yy)))
+        if len(copyObstacles) <= 1:
+            break
+        else:
+            copyObstacles.remove(obstacle)
+
+        for copiedObstacle in copyObstacles:
+            currCopiedObsPoints = []
+            xx, yy = copiedObstacle.exterior.coords.xy
+            xx.tolist()
+            yy.tolist()
+            currCopiedObsPoints = list(tuple(zip(xx, yy)))
+            if source != None and dest != None:
+                currCopiedObsPoints.append(source)
+                currCopiedObsPoints.append(dest)
+
+            currEdges = []
+            for point in currObsPoints:
+                for otherPoint in currCopiedObsPoints:
+                    currEdges.append((LineString([point, otherPoint]), False))
+        
+            for edge, is_intersect in currEdges:
+                for obs in obstacles:
+                    intersectionPoints = list(obs.intersection(edge).coords)
+                    if len(intersectionPoints) > 1:
+                        is_intersect = True
+                            
+                if not is_intersect:
+                    visibilityEdges.append(edge)                            
+
+    return visibilityEdges
 
 
 def is_valid_file(parser, arg):
@@ -108,7 +150,8 @@ if __name__ == '__main__':
     parser.add_argument("Robot", help="A file that holds the starting position of the robot, and the distance from the center of the robot to any of its vertices")
     parser.add_argument("Obstacles", help="A file that contains the obstacles in the map")
     parser.add_argument("Query", help="A file that contains the ending position for the robot.")
-    args = parser.parse_args()
+    #args = parser.parse_args()
+    args = parser.parse_known_args()[0]
     obstacles = args.Obstacles
     robot = args.Robot
     query = args.Query
@@ -128,7 +171,7 @@ if __name__ == '__main__':
 
     # line1_points = [(0, 0), (1, 0)]
     # line2_points = [(0, 0.5), (-0.5, 0)]
-    # test=angle_between_lines(line1_points, line2_points)
+    # test = angle_between_lines(line1_points, line2_points)
 
     # step 1:
     c_space_obstacles = [get_minkowsky_sum(p, dist) for p in workspace_obstacles]
