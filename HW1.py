@@ -172,7 +172,7 @@ def dijkstra_shortest_path(graph, source, dest):
     return path, dist.get(dest, float('inf'))
 
 
-def shortest_path_and_cost(lines, source, dest):
+def aa(lines, source, dest):
 
     #create dictionery
     # Iterate over each line segment
