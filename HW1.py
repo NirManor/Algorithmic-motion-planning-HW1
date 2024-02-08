@@ -4,7 +4,7 @@ from typing import List, Tuple
 import math
 import numpy as np
 import shapely as sh
-
+import heapq
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
 
@@ -89,7 +89,6 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
     :param dest: The destination of the query. None for part 1.
     :return: A list of LineStrings holding the edges of the visibility graph
     """
-    
     #should be in total (n^2)logn
     #obstacles are already calculated with the robot to get the minkowsky sums 
     ###TODO need to check for a case in which  2 obstacles intersect in their minkowsky and maybe need to compute the union of all minkowsky sums
@@ -129,9 +128,76 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
                             
                 if not is_intersect:
                     visibilityEdges.append(edge)                            
-
+            test1 = (visibilityEdges[0].coords[1])
     return visibilityEdges
 
+def dijkstra_shortest_path(graph, source, dest):
+    # Initialize distances and predecessors
+    dist = {}
+    prev = {}
+
+    # Priority queue to store vertices with their tentative distances
+    pq = [(0, source)]
+    dist[source] = 0
+
+    while pq:
+        # Get the vertex with the smallest distance from the priority queue
+        d, u = heapq.heappop(pq)
+
+        # If the current distance is already larger than the known shortest distance, skip
+        if d > dist.get(u, float('inf')):
+            continue
+
+        # Stop the search if the destination is reached
+        if u == dest:
+            break
+
+        # Explore neighbors of the current vertex
+        for v, weight in graph[u]:
+            alt = dist[u] + weight
+            if alt < dist.get(v, float('inf')):
+                dist[v] = alt
+                prev[v] = u
+                heapq.heappush(pq, (alt, v))
+
+    # Reconstruct the shortest path
+    path = []
+    u = dest
+    while u in prev:
+        path.append(u)
+        u = prev[u]
+    path.append(source)
+    path.reverse()
+
+    return path, dist.get(dest, float('inf'))
+
+
+def shortest_path_and_cost(lines, source, dest):
+
+    #create dictionery
+    # Iterate over each line segment
+    # Create dictionary to store nodes and their neighbors with lengths
+    nodes = {}
+
+    for line in lines:
+        # Extract coordinates of the line segment
+        a, b = line.coords[0], line.coords[1]
+
+        # Compute the length of the line segment
+        length = line.length
+
+        # Add neighbor b to the list of neighbors of node a
+        if a not in nodes:
+            nodes[a] = []
+        nodes[a].append((b, length))
+
+        # Add neighbor a to the list of neighbors of node b
+        if b not in nodes:
+            nodes[b] = []
+        nodes[b].append((a, length))
+    test=nodes
+    shortest_path, cost = dijkstra_shortest_path(nodes, source, dest)
+    return shortest_path, cost
 
 def is_valid_file(parser, arg):
     if not os.path.exists(arg):
@@ -201,7 +267,8 @@ if __name__ == '__main__':
 
     lines = get_visibility_graph(c_space_obstacles, source, dest)
     #TODO: fill in the next line
-    shortest_path, cost = None, None
+
+    shortest_path, cost = shortest_path_and_cost(lines, source, dest)
 
     plotter3 = Plotter()
     plotter3.add_robot(source, dist)
