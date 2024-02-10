@@ -2,13 +2,11 @@ import argparse
 import os
 from typing import List, Tuple
 import math
-import numpy as np
-import shapely as sh
 import heapq
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
 
-def angle_between_lines(line1_points, line2_points):
+def get_angle_between_lines(line1_points, line2_points):
     line1 = LineString(line1_points)
     line2 = LineString(line2_points)
 
@@ -67,8 +65,8 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
     newCoords = []
     while (i < len(RobotCoords) - 1) and (j < len(originalCoords) - 1):
         newCoords.append(summing_polygon_vertices(RobotCoords[i], originalCoords[j]))
-        angle_robot = angle_between_lines([RobotCoords[i], RobotCoords[i + 1]], [(0, 0), (1, 0)])
-        angle_obs = angle_between_lines([originalCoords[j], originalCoords[j + 1]], [(0, 0), (1, 0)])
+        angle_robot = get_angle_between_lines([RobotCoords[i], RobotCoords[i + 1]], [(0, 0), (1, 0)])
+        angle_obs = get_angle_between_lines([originalCoords[j], originalCoords[j + 1]], [(0, 0), (1, 0)])
         if angle_robot < angle_obs:
             i += 1
         elif angle_robot > angle_obs:
@@ -90,37 +88,41 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
     :return: A list of LineStrings holding the edges of the visibility graph
     """
     #should be in total (n^2)logn
-    #obstacles are already calculated with the robot to get the minkowsky sums 
-    ###TODO need to check for a case in which  2 obstacles intersect in their minkowsky and maybe need to compute the union of all minkowsky sums
+    #obstacles = minkowsky sums of the obstacles and the robot
+
     copyObstacles = obstacles.copy()
     visibilityEdges = []
+    #TODO - if there is only one obstacle
     for obstacle in obstacles:
         currObsPoints = []
-        xx, yy = obstacle.exterior.coords.xy
+        coords = obstacle.exterior.coords
+        xx, yy = coords.xy
         xx.tolist()
         yy.tolist()
-        currObsPoints = list(tuple(zip(xx, yy)))
-        if len(copyObstacles) <= 1:
+        currObsPoints = list(tuple(zip(xx, yy)))        
+        
+        #assuming there won't be obtacles that are overlapping with their minkowsky sums
+        linestrings = [LineString(coords[k:k+2]) for k in range(len(coords) - 1)]
+        for line in linestrings:
+            visibilityEdges.append(line)
+
+        if len(copyObstacles) <= 0:
             break
         else:
             copyObstacles.remove(obstacle)
 
-        for copiedObstacle in copyObstacles:
-            currCopiedObsPoints = []
-            xx, yy = copiedObstacle.exterior.coords.xy
-            xx.tolist()
-            yy.tolist()
-            currCopiedObsPoints = list(tuple(zip(xx, yy)))
+        currCopiedObsPoints = []
+        if len(obstacles) == 1:#in case there is only one obstacle
             if source != None and dest != None:
-                currCopiedObsPoints.append(source)
-                currCopiedObsPoints.append(dest)
-
-            currEdges = []
+                    currCopiedObsPoints.append(source)
+                    currCopiedObsPoints.append(dest)
+                
+            potentialEdges = []
             for point in currObsPoints:
                 for otherPoint in currCopiedObsPoints:
-                    currEdges.append((LineString([point, otherPoint]), False))
+                    potentialEdges.append((LineString([point, otherPoint]), False))
         
-            for edge, is_intersect in currEdges:
+            for edge, is_intersect in potentialEdges:
                 for obs in obstacles:
                     intersectionPoints = list(obs.intersection(edge).coords)
                     if len(intersectionPoints) > 1:
@@ -128,37 +130,60 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
                             
                 if not is_intersect:
                     visibilityEdges.append(edge)                            
-            test1 = (visibilityEdges[0].coords[1])
+        else:
+            for copiedObstacle in copyObstacles:    
+                xx, yy = copiedObstacle.exterior.coords.xy
+                xx.tolist()
+                yy.tolist()
+                currCopiedObsPoints = list(tuple(zip(xx, yy)))
+                if source != None and dest != None:
+                    currCopiedObsPoints.append(source)
+                    currCopiedObsPoints.append(dest)
+                
+                potentialEdges = []
+                for point in currObsPoints:
+                    for otherPoint in currCopiedObsPoints:
+                        potentialEdges.append((LineString([point, otherPoint]), False))
+            
+                for edge, is_intersect in potentialEdges:
+                    for obs in obstacles:
+                        intersectionPoints = list(obs.intersection(edge).coords)
+                        if len(intersectionPoints) > 1:
+                            is_intersect = True
+                                
+                    if not is_intersect:
+                        visibilityEdges.append(edge)                                       
+
     return visibilityEdges
 
-def dijkstra_shortest_path(graph, source, dest):
+def get_dijkstra_shortest_path(verticesList, source, dest):
     # Initialize distances and predecessors
     dist = {}
     prev = {}
 
     # Priority queue to store vertices with their tentative distances
-    pq = [(0, source)]
+    priorityQueue = [(0, source)]
     dist[source] = 0
 
-    while pq:
+    while priorityQueue:
         # Get the vertex with the smallest distance from the priority queue
-        d, u = heapq.heappop(pq)
+        currDistance, currVertex = heapq.heappop(priorityQueue)
 
         # If the current distance is already larger than the known shortest distance, skip
-        if d > dist.get(u, float('inf')):
+        if currDistance > dist.get(currVertex, float('inf')):
             continue
 
         # Stop the search if the destination is reached
-        if u == dest:
+        if currVertex == dest:
             break
 
         # Explore neighbors of the current vertex
-        for v, weight in graph[u]:
-            alt = dist[u] + weight
-            if alt < dist.get(v, float('inf')):
-                dist[v] = alt
-                prev[v] = u
-                heapq.heappush(pq, (alt, v))
+        for neighborVertex, distance in verticesList[currVertex]:
+            newDistance = dist[currVertex] + distance
+            if newDistance < dist.get(neighborVertex, float('inf')):
+                dist[neighborVertex] = newDistance
+                prev[neighborVertex] = currVertex
+                heapq.heappush(priorityQueue, (newDistance, neighborVertex))
 
     # Reconstruct the shortest path
     path = []
@@ -172,31 +197,27 @@ def dijkstra_shortest_path(graph, source, dest):
     return path, dist.get(dest, float('inf'))
 
 
-def aa(lines, source, dest):
+def get_shortest_path_and_cost(edges, source, dest):
+    #Iterating over each edge and creating dictionary to store vertices and their neighbors with their length
+    verticesNeighbors = {}
+    for edge in edges:
+        # Extract coordinates of the edge segment
+        vertex_a, vertex_b = edge.coords[0], edge.coords[1]
 
-    #create dictionery
-    # Iterate over each line segment
-    # Create dictionary to store nodes and their neighbors with lengths
-    nodes = {}
+        # Compute the length of the edge
+        length = edge.length
 
-    for line in lines:
-        # Extract coordinates of the line segment
-        a, b = line.coords[0], line.coords[1]
+        # Add vertex_b to the list of neighbors of vertex_a
+        if vertex_a not in verticesNeighbors:
+            verticesNeighbors[vertex_a] = []
+        verticesNeighbors[vertex_a].append((vertex_b, length))
 
-        # Compute the length of the line segment
-        length = line.length
+        # Add vertex_a to the list of neighbors of vertex_b
+        if vertex_b not in verticesNeighbors:
+            verticesNeighbors[vertex_b] = []
+        verticesNeighbors[vertex_b].append((vertex_a, length))
 
-        # Add neighbor b to the list of neighbors of node a
-        if a not in nodes:
-            nodes[a] = []
-        nodes[a].append((b, length))
-
-        # Add neighbor a to the list of neighbors of node b
-        if b not in nodes:
-            nodes[b] = []
-        nodes[b].append((a, length))
-    test=nodes
-    shortest_path, cost = dijkstra_shortest_path(nodes, source, dest)
+    shortest_path, cost = get_dijkstra_shortest_path(verticesNeighbors, source, dest)
     return shortest_path, cost
 
 def is_valid_file(parser, arg):
@@ -216,8 +237,7 @@ if __name__ == '__main__':
     parser.add_argument("Robot", help="A file that holds the starting position of the robot, and the distance from the center of the robot to any of its vertices")
     parser.add_argument("Obstacles", help="A file that contains the obstacles in the map")
     parser.add_argument("Query", help="A file that contains the ending position for the robot.")
-    #args = parser.parse_args()
-    args = parser.parse_known_args()[0]
+    args = parser.parse_args()
     obstacles = args.Obstacles
     robot = args.Robot
     query = args.Query
@@ -235,6 +255,7 @@ if __name__ == '__main__':
     with open(robot, 'r') as f:
         source, dist = get_points_and_dist(f.readline())
 
+    #TODO - remove it in the end
     # line1_points = [(0, 0), (1, 0)]
     # line2_points = [(0, 0.5), (-0.5, 0)]
     # test = angle_between_lines(line1_points, line2_points)
@@ -268,7 +289,7 @@ if __name__ == '__main__':
     lines = get_visibility_graph(c_space_obstacles, source, dest)
     #TODO: fill in the next line
 
-    shortest_path, cost = shortest_path_and_cost(lines, source, dest)
+    shortest_path, cost = get_shortest_path_and_cost(lines, source, dest)
 
     plotter3 = Plotter()
     plotter3.add_robot(source, dist)
