@@ -61,10 +61,13 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
 
     return poly
 
-def get_obstacles_edges(obstacles: List[Polygon]) -> List[LineString]:
-    edges = []
+def get_new_edges_vertices_of_obstacles(obstacles: List[Polygon]):
+    allEdges = []
+    obstaclesVertices = []
+    
     for obstacle in obstacles:            
         currObsEdges = [(LineString(obstacle.exterior.coords[k:k+2]), False) for k in range(len(obstacle.exterior.coords) - 1)]
+        newObsVertices = []
         for edge, is_intersect in currObsEdges:
             for obs in obstacles:
                 if obs == obstacle:
@@ -72,31 +75,41 @@ def get_obstacles_edges(obstacles: List[Polygon]) -> List[LineString]:
                 intersectionPoints = list(obs.intersection(edge).coords)
                 #edge intersects with the obtstacle
                 if len(intersectionPoints) > 1:
-                    coords = list(edge.coords)
                     #the edge is entirely inside another obstacle
+                    coords = list(edge.coords)
                     if (obs.contains(Point(coords[0])) and obs.contains(Point(coords[1]))):
                         is_intersect = True
                     #the edge crosses another obstacle
                     elif not is_intersect:
+                        #creating edges to check
                         for coord in coords:
                             for intersectionPoint in intersectionPoints:
                                 if coord == intersectionPoint:
                                     continue
-                                line = LineString([coord, intersectionPoint])
-                                intersection = list(obs.intersection(line).coords)
+                                edgeToCheck = LineString([coord, intersectionPoint])
+                                intersection = list(obs.intersection(edgeToCheck).coords)
                                 if len(intersection) <= 1:
-                                    edges.append(line)
                                     is_intersect = True
+                                    allEdges.append(edgeToCheck)
+                                    newCoords = list(edgeToCheck.coords)
+                                    for coord in newCoords:
+                                        newObsVertices.append(coord)
                     #the edge is adjecnt to another obstacle
                     elif not is_intersect:                            
                         line1 = LineString([intersectionPoints[0], intersectionPoints[1]])
                         line2 = LineString([intersectionPoints[1], intersectionPoints[0]])
                         if (edge == line1) or (edge == line2):
                             is_intersect = False
+                
             if not is_intersect:
-                edges.append(edge)
+                allEdges.append(edge)
+                newCoords = list(edge.coords)
+                for coord in newCoords:
+                    newObsVertices.append(coord)
+        
+        obstaclesVertices.append(newObsVertices)
 
-    return edges
+    return allEdges, obstaclesVertices
 
 # TODO
 def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> List[LineString]:
@@ -107,8 +120,8 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
     :param dest: The destination of the query. None for part 1.
     :return: A list of LineStrings holding the edges of the visibility graph
     """
-    visibilityEdges = get_obstacles_edges(obstacles)
-
+    visibilityEdges, obstaclesVertices = get_new_edges_vertices_of_obstacles(obstacles)
+    
     if len(obstacles) == 0:
         if source != None and dest != None:
             visibilityEdges.append(LineString([source, dest]))
@@ -116,11 +129,11 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
         allOtherObstacles = obstacles.copy()               
  
         while allOtherObstacles:
-            for obs1 in obstacles:
+            for index, obs1 in enumerate(obstacles):
                 allOtherObstacles.remove(obs1) 
                 
                 obs1_Vertices = []
-                for vertex in obs1.exterior.coords[:-1]:
+                for vertex in obstaclesVertices[index]:
                     obs1_Vertices.append(vertex) 
 
                 for obs2 in allOtherObstacles:
@@ -145,8 +158,8 @@ def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> Li
                                 is_intersect = True
                                     
                         if not is_intersect:
-                            visibilityEdges.append(edge)                                       
-
+                            visibilityEdges.append(edge)
+    
     return visibilityEdges
 
 def get_dijkstra_shortest_path(verticesList, source, dest):
